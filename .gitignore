@@ -3,3 +3,6 @@
 
 # JUnit XMLs
 junit*.xml
+
+# Compiled test files
+*.test
