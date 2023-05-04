@@ -11,7 +11,7 @@ The container image option makes this image consumable by other CI frameworks
 for easy running. With either method used, all that is required is the
 necessary input to authenticate with the necessary clusters/infrastructure.
 
-## Test Suite Design
+## Test Suite Model
 
 * Before Suite
   * Authenticate with MC/SC
@@ -39,6 +39,10 @@ operations are performed. For example:
   * Will do everything except upgrade the service cluster
 * `ginkgo run --label-filter="ApplyHCPWorkloads || SCUpgrade || MCUpgrade"`
   * Will do everything except remove the hcp clusters deployed
+
+### Test Suite Design Approaches
+
+![Automation Design](docs/images/automation-design.png)
 
 ## TODO's
 
