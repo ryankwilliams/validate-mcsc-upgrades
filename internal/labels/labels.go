@@ -3,27 +3,10 @@ package labels
 import "github.com/onsi/ginkgo/v2"
 
 var (
-	MCUpgrade = ginkgo.Label(
-		"ManagementClusterUpgrade",
-		"MCUpgrade",
-	)
-
-	SCUpgrade = ginkgo.Label(
-		"ServiceClusterUpgrade",
-		"SCUpgrade",
-	)
-
-	MCUpgradeHealthChecks = ginkgo.Label(
-		"ManagementClusterUpgradeHealthChecks",
-		"MCUpgradeHealthChecks",
-	)
-
-	SCUpgradeHealthChecks = ginkgo.Label(
-		"ServiceClusterUpgradeHealthChecks",
-		"SCUpgradeHealthChecks",
-	)
-
-	ApplyHCPWorkloads = ginkgo.Label("ApplyHCPWorkloads")
-
-	RemoveHCPWorkloads = ginkgo.Label("RemoveHCPWorkloads")
+	ApplyHCPWorkloads     = ginkgo.Label("ApplyHCPWorkloads")
+	MCUpgrade             = ginkgo.Label("MCUpgrade")
+	MCUpgradeHealthChecks = ginkgo.Label("MCUpgradeHealthChecks")
+	RemoveHCPWorkloads    = ginkgo.Label("RemoveHCPWorkloads")
+	SCUpgrade             = ginkgo.Label("SCUpgrade")
+	SCUpgradeHealthChecks = ginkgo.Label("SCUpgradeHealthChecks")
 )

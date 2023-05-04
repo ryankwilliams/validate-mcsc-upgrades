@@ -59,28 +59,32 @@ var _ = ginkgo.AfterSuite(func() {
 var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 
 	ginkgo.It("service cluster is upgraded successfully", labels.SCUpgrade, func() {
-		fmt.Printf("Upgrading service cluster to version %q\n", *scUpgradeVersion)
+		fmt.Printf("Performing service cluster upgrade to version %q\n", *scUpgradeVersion)
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 
-	ginkgo.It("service cluster health checks are passing post upgrade", labels.SCUpgrade, func() {
+	ginkgo.It("service cluster health checks are passing post upgrade", labels.SCUpgrade, labels.SCUpgradeHealthChecks, func() {
+		fmt.Println("Performing service cluster post upgrade health checks")
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 
 	ginkgo.It("hcp workloads are unaffected post service cluster upgrade", labels.SCUpgrade, func() {
+		fmt.Println("Performing hcp cluster post service cluster upgrade")
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 
 	ginkgo.It("management cluster is upgraded successfully", labels.MCUpgrade, func() {
-		fmt.Printf("Upgrading management cluster to version %q\n", *mcUpgradeVersion)
+		fmt.Printf("Performing management cluster upgrade to version %q\n", *mcUpgradeVersion)
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 
-	ginkgo.It("management cluster health checks are passing post upgrade", labels.MCUpgrade, func() {
+	ginkgo.It("management cluster health checks are passing post upgrade", labels.MCUpgrade, labels.MCUpgradeHealthChecks, func() {
+		fmt.Println("Performing management cluster post upgrade health checks")
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 
 	ginkgo.It("hcp workloads are unaffected post management cluster upgrade", labels.MCUpgrade, func() {
+		fmt.Println("Performing hcp cluster post management cluster upgrade")
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 })
