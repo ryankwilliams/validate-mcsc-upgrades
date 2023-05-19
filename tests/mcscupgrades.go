@@ -36,10 +36,9 @@ var _ = ginkgo.BeforeSuite(func() {
 		ocmToken,
 		ocmEnv,
 		&provider.Cluster{
-			Name:             "my-cluster",
-			Version:          "4.12.6",
-			ChannelGroup:     "candidate",
-			InstallerRoleARN: "",
+			Name:         "my-cluster",
+			Version:      "4.12.6",
+			ChannelGroup: "candidate",
 		},
 	)
 	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to construct rosa provider")

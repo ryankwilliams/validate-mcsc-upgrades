@@ -9,10 +9,9 @@ import (
 )
 
 type Cluster struct {
-	ChannelGroup     string
-	Name             string
-	Version          string
-	InstallerRoleARN string
+	ChannelGroup string
+	Name         string
+	Version      string
 
 	id string
 }
@@ -37,11 +36,10 @@ func (p *Provider) CreateHCPClusters(ctx context.Context) error {
 	fmt.Printf("Provision cluster w/options: %+v\n", p.cluster)
 
 	clusterID, err := p.CreateCluster(ctx, &rosa.CreateClusterOptions{
-		ClusterName:      p.cluster.Name,
-		InstallerRoleArn: p.cluster.InstallerRoleARN,
-		Version:          p.cluster.Version,
-		ChannelGroup:     p.cluster.ChannelGroup,
-		HostedCP:         true,
+		ClusterName:  p.cluster.Name,
+		Version:      p.cluster.Version,
+		ChannelGroup: p.cluster.ChannelGroup,
+		HostedCP:     true,
 	})
 
 	p.cluster.id = clusterID
