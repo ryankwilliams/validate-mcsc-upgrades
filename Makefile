@@ -13,9 +13,12 @@ build:
 build-image:
 	${CONTAINER_ENGINE} build -t validate-mcsc-upgrades:latest .
 
-fmt:
+format:
 	gofmt -s -w .
 
-lint: fmt
+gofumpt:
+	gofumpt -w .
+
+lint: format gofumpt
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin
 	golangci-lint run .
