@@ -1,10 +1,14 @@
 package tests
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+
+	"github.com/openshift/osde2e-framework/pkg/clients/ocm"
 
 	"github.com/ryankwilliams/validate-mcsc-upgrades/internal/labels"
 	"github.com/ryankwilliams/validate-mcsc-upgrades/internal/provider"
@@ -13,13 +17,32 @@ import (
 var (
 	scUpgradeVersion *string
 	mcUpgradeVersion *string
+	p                *provider.Provider
 )
 
 var _ = ginkgo.BeforeSuite(func() {
 	var (
 		clusterVersion string
 		err            error
+
+		ctx      = context.Background()
+		ocmEnv   = ocm.Stage
+		ocmToken = os.Getenv("OCM_TOKEN")
 	)
+
+	// Construct new rosa provider
+	p, err = provider.New(
+		ctx,
+		ocmToken,
+		ocmEnv,
+		&provider.Cluster{
+			Name:             "my-cluster",
+			Version:          "4.12.6",
+			ChannelGroup:     "candidate",
+			InstallerRoleARN: "",
+		},
+	)
+	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to construct rosa provider")
 
 	// Connect to MC/SC
 
@@ -46,13 +69,21 @@ var _ = ginkgo.BeforeSuite(func() {
 	}
 
 	if labels.ApplyHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
-		provider.AddHCPWorkloads()
+		err := p.CreateHCPClusters(ctx)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "create hcp cluster failed")
 	}
 })
 
 var _ = ginkgo.AfterSuite(func() {
+	ctx := context.Background()
+
+	defer func() {
+		_ = p.Connection.Close()
+	}()
+
 	if labels.RemoveHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
-		provider.RemoveHCPWorkloads()
+		err := p.DeleteHCPClusters(ctx)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "delete hcp cluster failed")
 	}
 })
 
