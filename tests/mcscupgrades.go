@@ -2,17 +2,18 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/Masterminds/semver"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
+	kubernetesclient "github.com/openshift/osde2e-framework/pkg/clients/kubernetes"
 	"github.com/openshift/osde2e-framework/pkg/clients/ocm"
 	"github.com/openshift/osde2e-framework/pkg/providers/osd"
 	"github.com/openshift/osde2e-framework/pkg/providers/rosa"
 
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
@@ -21,10 +22,12 @@ var (
 	clusterName                     = getEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 4))
 	clusterChannelGroup             = getEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
 	clusterVersion                  = getEnvVar("CLUSTER_VERSION", "4.12.18")
+	hcpClusterKubeConfigFile        *string
 	hcpClusterID                    *string
-	managementClusterID             string
-	managementClusterVersion        semver.Version
-	managementClusterUpgradeVersion semver.Version
+	managementClusterKubeConfigFile *string
+	managementClusterID             *string
+	managementClusterVersion        *semver.Version
+	managementClusterUpgradeVersion *semver.Version
 	mcUpgrade                       = ginkgo.Label("MCUpgrade")
 	mcUpgradeHealthChecks           = ginkgo.Label("MCUpgradeHealthChecks")
 	osdProvider                     *osd.Provider
@@ -32,9 +35,10 @@ var (
 	rosaProvider                    *rosa.Provider
 	scUpgrade                       = ginkgo.Label("SCUpgrade")
 	scUpgradeHealthChecks           = ginkgo.Label("SCUpgradeHealthChecks")
-	serviceClusterID                string
-	serviceClusterVersion           semver.Version
-	serviceClusterUpgradeVersion    semver.Version
+	serviceClusterKubeConfigFile    *string
+	serviceClusterID                *string
+	serviceClusterVersion           *semver.Version
+	serviceClusterUpgradeVersion    *semver.Version
 )
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -48,6 +52,9 @@ var _ = ginkgo.BeforeSuite(func() {
 		upgradeType                     = os.Getenv("UPGRADE_TYPE")
 	)
 
+	// Validate required general input
+	gomega.Expect(ocmToken).Error().ShouldNot(gomega.BeEmpty(), "ocm token is undefined")
+
 	// Construct new rosa provider
 	rosaProvider, err := rosa.New(ctx, ocmToken, ocmEnv)
 	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct rosa provider")
@@ -59,7 +66,6 @@ var _ = ginkgo.BeforeSuite(func() {
 	// Validate required cluster upgrade input
 	gomega.Expect(osdFleetMgmtServiceClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager service cluster id is undefined")
 	gomega.Expect(osdFleetMgmtManagementClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager management cluster id is undefined")
-	// TODO Open issue to have this exposed via api response
 	gomega.Expect(provisionShardID).Error().ShouldNot(gomega.BeEmpty(), "provision shard id is undefined")
 	gomega.Expect(upgradeType).Error().Should(gomega.BeElementOf([]string{"Y", "Z"}), "upgrade type is invalid")
 
@@ -72,8 +78,8 @@ var _ = ginkgo.BeforeSuite(func() {
 		serviceCluster, err := osdProvider.ClustersMgmt().V1().Clusters().Cluster(osdFleetManagerSC.Body().ClusterManagementReference().ClusterId()).Get().SendContext(ctx)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get get service cluster: %s", osdFleetMgmtServiceClusterID)
 
-		serviceClusterID = serviceCluster.Body().Version().RawID()
-		serviceClusterVersion, err := semver.NewVersion(serviceClusterID)
+		serviceClusterID = pointer.String(serviceCluster.Body().ID())
+		serviceClusterVersion, err := semver.NewVersion(serviceCluster.Body().Version().RawID())
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse service cluster installed version to semantic version")
 
 		availableVersions := serviceCluster.Body().Version().AvailableUpgrades()
@@ -84,14 +90,19 @@ var _ = ginkgo.BeforeSuite(func() {
 			version, err := semver.NewVersion(availableVersions[totalUpgradeVersionsAvailable-i-1])
 			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse service cluster upgrade version to semantic version")
 			if (serviceClusterVersion.Minor() == version.Minor()) && upgradeType == "Z" {
-				serviceClusterUpgradeVersion = *version
+				serviceClusterUpgradeVersion = version
 				break
 			} else if (serviceClusterVersion.Minor() < version.Minor()) && upgradeType == "Y" {
-				serviceClusterUpgradeVersion = *version
+				serviceClusterUpgradeVersion = version
 				break
 			}
 		}
 		gomega.Expect(serviceClusterUpgradeVersion).ToNot(gomega.BeNil(), "failed to identify service cluster %q upgrade version", osdFleetMgmtServiceClusterID)
+
+		// Get kubeconfig
+		kubeConfigFile, err := osdProvider.KubeConfigFile(ctx, *serviceClusterID)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get service cluster %q kubeconfig file", osdFleetMgmtServiceClusterID)
+		serviceClusterKubeConfigFile = &kubeConfigFile
 	}
 
 	// Identify the management cluster install/upgrade versions
@@ -103,8 +114,8 @@ var _ = ginkgo.BeforeSuite(func() {
 		managementCluster, err := osdProvider.ClustersMgmt().V1().Clusters().Cluster(osdFleetManagerMC.Body().ClusterManagementReference().ClusterId()).Get().SendContext(ctx)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get get management cluster: %s", osdFleetMgmtManagementClusterID)
 
-		managementClusterID = managementCluster.Body().Version().RawID()
-		managementClusterVersion, err := semver.NewVersion(managementClusterID)
+		managementClusterID = pointer.String(managementCluster.Body().ID())
+		managementClusterVersion, err = semver.NewVersion(managementCluster.Body().Version().RawID())
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse management cluster installed version to semantic version")
 
 		availableVersions := managementCluster.Body().Version().AvailableUpgrades()
@@ -115,14 +126,19 @@ var _ = ginkgo.BeforeSuite(func() {
 			version, err := semver.NewVersion(availableVersions[totalAvailableVersions-i-1])
 			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse management cluster upgrade version to semantic version")
 			if (managementClusterVersion.Minor() == version.Minor()) && upgradeType == "Z" {
-				managementClusterUpgradeVersion = *version
+				managementClusterUpgradeVersion = version
 				break
 			} else if (managementClusterVersion.Minor() < version.Minor()) && upgradeType == "Y" {
-				managementClusterUpgradeVersion = *version
+				managementClusterUpgradeVersion = version
 				break
 			}
 		}
 		gomega.Expect(managementClusterUpgradeVersion).ToNot(gomega.BeNil(), "failed to identify service cluster %q upgrade version", osdFleetMgmtManagementClusterID)
+
+		// Get kubeconfig
+		kubeConfigFile, err := osdProvider.KubeConfigFile(ctx, *managementClusterID)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get management cluster %q kubeconfig file", osdFleetMgmtServiceClusterID)
+		managementClusterKubeConfigFile = &kubeConfigFile
 	}
 
 	if applyHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
@@ -134,6 +150,10 @@ var _ = ginkgo.BeforeSuite(func() {
 		})
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to create rosa hosted control plane cluster")
 		hcpClusterID = &clusterID
+
+		kubeConfigFile, err := rosaProvider.KubeConfigFile(ctx, *hcpClusterID)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get rosa hosted control plane cluster %q kubeconfig file", hcpClusterID)
+		hcpClusterKubeConfigFile = &kubeConfigFile
 	}
 })
 
@@ -141,8 +161,7 @@ var _ = ginkgo.AfterSuite(func() {
 	ctx := context.Background()
 
 	defer func() {
-		_ = osdProvider.Connection.Close()
-		_ = rosaProvider.Connection.Close()
+		_ = osdProvider.Client.Close()
 	}()
 
 	if removeHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
@@ -156,36 +175,50 @@ var _ = ginkgo.AfterSuite(func() {
 })
 
 var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
-	ginkgo.It("service cluster is upgraded successfully", scUpgrade, func(ctx context.Context) {
-		fmt.Printf("Performing service cluster upgrade to version %q\n", serviceClusterVersion.String())
-		gomega.Expect(true).Should(gomega.BeTrue())
-	})
+	kubernetesClient := func(kubeconfigFile string) (*kubernetesclient.Client, error) {
+		os.Setenv("KUBECONFIG", kubeconfigFile)
+		return kubernetesclient.New()
+	}
 
-	ginkgo.It("service cluster health checks are passing post upgrade", scUpgrade, scUpgradeHealthChecks, func(ctx context.Context) {
-		fmt.Println("Performing service cluster post upgrade health checks")
-		err := osdProvider.OCMUpgrade(ctx, serviceClusterID, serviceClusterVersion, serviceClusterUpgradeVersion)
+	hcpClusterCheck := func() error {
+		_, err := kubernetesClient(*hcpClusterKubeConfigFile)
+		return err
+	}
+
+	ginkgo.It("service cluster is upgraded successfully", scUpgrade, func(ctx context.Context) {
+		client, err := kubernetesClient(*serviceClusterKubeConfigFile)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct kubernetes client to service cluster")
+
+		err = osdProvider.OCMUpgrade(ctx, client, *serviceClusterID, *serviceClusterVersion, *serviceClusterUpgradeVersion)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "service cluster upgrade failed")
 	})
 
+	ginkgo.It("service cluster health checks are passing post upgrade", scUpgrade, scUpgradeHealthChecks, func(ctx context.Context) {
+		_, err := kubernetesClient(*serviceClusterKubeConfigFile)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct kubernetes client to service cluster")
+	})
+
 	ginkgo.It("hcp workloads are unaffected post service cluster upgrade", scUpgrade, func(ctx context.Context) {
-		fmt.Println("Performing hcp cluster post service cluster upgrade")
-		gomega.Expect(true).Should(gomega.BeTrue())
+		err := hcpClusterCheck()
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "hosted control plane cluster failed post upgrade check")
 	})
 
 	ginkgo.It("management cluster is upgraded successfully", mcUpgrade, func(ctx context.Context) {
-		fmt.Printf("Performing management cluster upgrade to version %q\n", managementClusterVersion.String())
-		err := osdProvider.OCMUpgrade(ctx, managementClusterID, managementClusterVersion, managementClusterUpgradeVersion)
+		client, err := kubernetesClient(*managementClusterKubeConfigFile)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct kubernetes client to management cluster")
+
+		err = osdProvider.OCMUpgrade(ctx, client, *managementClusterID, *managementClusterVersion, *managementClusterUpgradeVersion)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "management cluster upgrade failed")
 	})
 
 	ginkgo.It("management cluster health checks are passing post upgrade", mcUpgrade, mcUpgradeHealthChecks, func(ctx context.Context) {
-		fmt.Println("Performing management cluster post upgrade health checks")
-		gomega.Expect(true).Should(gomega.BeTrue())
+		_, err := kubernetesClient(*managementClusterKubeConfigFile)
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct kubernetes client to management cluster")
 	})
 
 	ginkgo.It("hcp workloads are unaffected post management cluster upgrade", mcUpgrade, func(ctx context.Context) {
-		fmt.Println("Performing hcp cluster post management cluster upgrade")
-		gomega.Expect(true).Should(gomega.BeTrue())
+		err := hcpClusterCheck()
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "hosted control plane cluster failed post upgrade check")
 	})
 })
 
