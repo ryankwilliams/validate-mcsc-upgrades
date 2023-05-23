@@ -6,3 +6,6 @@ junit*.xml
 
 # Compiled test files
 *.test
+
+# Kubeconfig files
+*-kubeconfig
