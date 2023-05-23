@@ -16,6 +16,9 @@ import (
 
 var (
 	applyHCPWorkloads               = ginkgo.Label("ApplyHCPWorkloads")
+	clusterName                     = getEnvVar("CLUSTER_NAME", "my-cluster")
+	clusterChannelGroup             = getEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
+	clusterVersion                  = getEnvVar("CLUSTER_VERSION", "4.12.18")
 	hcpClusterID                    *string
 	managementClusterID             string
 	managementClusterVersion        semver.Version
@@ -30,12 +33,6 @@ var (
 	serviceClusterID                string
 	serviceClusterVersion           semver.Version
 	serviceClusterUpgradeVersion    semver.Version
-)
-
-const (
-	clusterName    = "my-cluster"
-	clusterVersion = "4.12.18"
-	channelGroup   = "candidate"
 )
 
 var _ = ginkgo.BeforeSuite(func() {
@@ -128,13 +125,14 @@ var _ = ginkgo.BeforeSuite(func() {
 	}
 
 	if applyHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
-		hcpClusterID, err := rosaProvider.CreateCluster(ctx, &rosa.CreateClusterOptions{
+		clusterID, err := rosaProvider.CreateCluster(ctx, &rosa.CreateClusterOptions{
 			ClusterName:  clusterName,
 			Version:      clusterVersion,
-			ChannelGroup: channelGroup,
+			ChannelGroup: clusterChannelGroup,
 			HostedCP:     true,
 		})
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "create hcp cluster failed")
+		hcpClusterID = &clusterID
 	}
 })
 
@@ -189,3 +187,13 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 		gomega.Expect(true).Should(gomega.BeTrue())
 	})
 })
+
+// getEnvVar gets environment variable value and if not set, returns the
+// default provided
+func getEnvVar(key, value string) string {
+	result, exist := os.LookupEnv(key)
+	if exist {
+		return result
+	}
+	return value
+}
