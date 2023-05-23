@@ -12,11 +12,13 @@ import (
 	"github.com/openshift/osde2e-framework/pkg/clients/ocm"
 	"github.com/openshift/osde2e-framework/pkg/providers/osd"
 	"github.com/openshift/osde2e-framework/pkg/providers/rosa"
+
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 var (
 	applyHCPWorkloads               = ginkgo.Label("ApplyHCPWorkloads")
-	clusterName                     = getEnvVar("CLUSTER_NAME", "my-cluster")
+	clusterName                     = getEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 4))
 	clusterChannelGroup             = getEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
 	clusterVersion                  = getEnvVar("CLUSTER_VERSION", "4.12.18")
 	hcpClusterID                    *string
@@ -37,8 +39,6 @@ var (
 
 var _ = ginkgo.BeforeSuite(func() {
 	var (
-		err error
-
 		ctx                             = context.Background()
 		ocmEnv                          = ocm.Integration
 		ocmToken                        = os.Getenv("OCM_TOKEN")
@@ -49,40 +49,40 @@ var _ = ginkgo.BeforeSuite(func() {
 	)
 
 	// Construct new rosa provider
-	rosaProvider, err = rosa.New(ctx, ocmToken, ocmEnv)
-	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to construct rosa provider")
+	rosaProvider, err := rosa.New(ctx, ocmToken, ocmEnv)
+	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct rosa provider")
 
 	// Construct new osd provider
 	osdProvider, err = osd.New(ctx, ocmToken, ocmEnv)
-	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to construct osd provider")
+	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct osd provider")
 
 	// Validate required cluster upgrade input
-	gomega.Expect(osdFleetMgmtServiceClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager service cluster id was not provided")
-	gomega.Expect(osdFleetMgmtManagementClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager management cluster id was not provided")
-	gomega.Expect(provisionShardID).Error().ShouldNot(gomega.BeEmpty(), "provision shard id was not provided") // TODO: Open issue/pr to expose this field when using ocm-sdk-go
+	gomega.Expect(osdFleetMgmtServiceClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager service cluster id is undefined")
+	gomega.Expect(osdFleetMgmtManagementClusterID).Error().ShouldNot(gomega.BeEmpty(), "osd fleet manager management cluster id is undefined")
+	// TODO Open issue to have this exposed via api response
+	gomega.Expect(provisionShardID).Error().ShouldNot(gomega.BeEmpty(), "provision shard id is undefined")
 	gomega.Expect(upgradeType).Error().Should(gomega.BeElementOf([]string{"Y", "Z"}), "upgrade type is invalid")
-
-	// TODO: Consolidate these
 
 	// Identify the service cluster install/upgrade versions
 	if scUpgrade.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
 		osdFleetManagerSC, err := osdProvider.OSDFleetMgmt().V1().ServiceClusters().ServiceCluster(osdFleetMgmtServiceClusterID).Get().SendContext(ctx)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to get osd fleet manager service cluster")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "ocm osd fleet manager api request failed to get osd fleet manager service cluster: %q", osdFleetMgmtServiceClusterID)
+		gomega.Expect(osdFleetManagerSC).NotTo(gomega.BeNil(), "osd fleet manager service cluster: %q does not exist", osdFleetMgmtServiceClusterID)
 
 		serviceCluster, err := osdProvider.ClustersMgmt().V1().Clusters().Cluster(osdFleetManagerSC.Body().ClusterManagementReference().ClusterId()).Get().SendContext(ctx)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to get service cluster")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get get service cluster: %s", osdFleetMgmtServiceClusterID)
 
 		serviceClusterID = serviceCluster.Body().Version().RawID()
 		serviceClusterVersion, err := semver.NewVersion(serviceClusterID)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to parse version to semantic version")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse service cluster installed version to semantic version")
 
 		availableVersions := serviceCluster.Body().Version().AvailableUpgrades()
-		totalAvailableVersions := len(availableVersions)
-		gomega.Expect(totalAvailableVersions).ToNot(gomega.BeNumerically("==", 0), "service cluster has no available supported upgrade versions")
+		totalUpgradeVersionsAvailable := len(availableVersions)
+		gomega.Expect(totalUpgradeVersionsAvailable).ToNot(gomega.BeNumerically("==", 0), "service cluster has no available supported upgrade versions")
 
-		for i := 0; i < totalAvailableVersions; i++ {
-			version, err := semver.NewVersion(availableVersions[totalAvailableVersions-i-1])
-			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to parse version to semantic version")
+		for i := 0; i < totalUpgradeVersionsAvailable; i++ {
+			version, err := semver.NewVersion(availableVersions[totalUpgradeVersionsAvailable-i-1])
+			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse service cluster upgrade version to semantic version")
 			if (serviceClusterVersion.Minor() == version.Minor()) && upgradeType == "Z" {
 				serviceClusterUpgradeVersion = *version
 				break
@@ -91,20 +91,21 @@ var _ = ginkgo.BeforeSuite(func() {
 				break
 			}
 		}
-		gomega.Expect(serviceClusterUpgradeVersion).ToNot(gomega.BeNil(), "unable to identify service cluster upgrade version")
+		gomega.Expect(serviceClusterUpgradeVersion).ToNot(gomega.BeNil(), "failed to identify service cluster %q upgrade version", osdFleetMgmtServiceClusterID)
 	}
 
 	// Identify the management cluster install/upgrade versions
 	if mcUpgrade.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
 		osdFleetManagerMC, err := osdProvider.OSDFleetMgmt().V1().ManagementClusters().ManagementCluster(osdFleetMgmtManagementClusterID).Get().SendContext(ctx)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to get osd fleet manager management cluster")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "ocm osd fleet manager api request failed to get osd fleet manager management cluster: %q", osdFleetMgmtManagementClusterID)
+		gomega.Expect(osdFleetManagerMC).NotTo(gomega.BeNil(), "osd fleet manager management cluster: %q does not exist", osdFleetMgmtManagementClusterID)
 
 		managementCluster, err := osdProvider.ClustersMgmt().V1().Clusters().Cluster(osdFleetManagerMC.Body().ClusterManagementReference().ClusterId()).Get().SendContext(ctx)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to get management cluster")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get get management cluster: %s", osdFleetMgmtManagementClusterID)
 
 		managementClusterID = managementCluster.Body().Version().RawID()
 		managementClusterVersion, err := semver.NewVersion(managementClusterID)
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to parse version to semantic version")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse management cluster installed version to semantic version")
 
 		availableVersions := managementCluster.Body().Version().AvailableUpgrades()
 		totalAvailableVersions := len(availableVersions)
@@ -112,7 +113,7 @@ var _ = ginkgo.BeforeSuite(func() {
 
 		for i := 0; i < totalAvailableVersions; i++ {
 			version, err := semver.NewVersion(availableVersions[totalAvailableVersions-i-1])
-			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "unable to parse version to semantic version")
+			gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse management cluster upgrade version to semantic version")
 			if (managementClusterVersion.Minor() == version.Minor()) && upgradeType == "Z" {
 				managementClusterUpgradeVersion = *version
 				break
@@ -121,7 +122,7 @@ var _ = ginkgo.BeforeSuite(func() {
 				break
 			}
 		}
-		gomega.Expect(managementClusterUpgradeVersion).ToNot(gomega.BeNil(), "unable to identify management cluster upgrade version")
+		gomega.Expect(managementClusterUpgradeVersion).ToNot(gomega.BeNil(), "failed to identify service cluster %q upgrade version", osdFleetMgmtManagementClusterID)
 	}
 
 	if applyHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
@@ -131,7 +132,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			ChannelGroup: clusterChannelGroup,
 			HostedCP:     true,
 		})
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "create hcp cluster failed")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to create rosa hosted control plane cluster")
 		hcpClusterID = &clusterID
 	}
 })
@@ -150,7 +151,7 @@ var _ = ginkgo.AfterSuite(func() {
 			ClusterID:   *hcpClusterID,
 			HostedCP:    true,
 		})
-		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "delete hcp cluster failed")
+		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to delete rosa hosted control plane cluster")
 	}
 })
 
@@ -188,8 +189,7 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 	})
 })
 
-// getEnvVar gets environment variable value and if not set, returns the
-// default provided
+// getEnvVar gets environment variable value and returns default if unset
 func getEnvVar(key, value string) string {
 	result, exist := os.LookupEnv(key)
 	if exist {
