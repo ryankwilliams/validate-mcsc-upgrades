@@ -41,6 +41,8 @@ var (
 	serviceClusterUpgradeVersion    *semver.Version
 )
 
+// TODO Verify no alerts are firing before initiating cluster upgrades
+
 var _ = ginkgo.BeforeSuite(func() {
 	var (
 		ctx                             = context.Background()
