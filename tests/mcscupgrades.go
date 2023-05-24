@@ -9,6 +9,8 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
+	"github.com/ryankwilliams/validate-mcsc-upgrades/internal"
+
 	kubernetesclient "github.com/openshift/osde2e-framework/pkg/clients/kubernetes"
 	"github.com/openshift/osde2e-framework/pkg/clients/ocm"
 	"github.com/openshift/osde2e-framework/pkg/providers/osd"
@@ -20,9 +22,9 @@ import (
 
 var (
 	applyHCPWorkloads               = ginkgo.Label("ApplyHCPWorkloads")
-	clusterName                     = getEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 8))
-	clusterChannelGroup             = getEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
-	clusterVersion                  = getEnvVar("CLUSTER_VERSION", "4.12.18")
+	clusterName                     = internal.GetEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 8))
+	clusterChannelGroup             = internal.GetEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
+	clusterVersion                  = internal.GetEnvVar("CLUSTER_VERSION", "4.12.18")
 	err                             error
 	hcpClusterKubeConfigFile        *string
 	hcpClusterID                    *string
@@ -221,12 +223,3 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "hosted control plane cluster failed post upgrade check")
 	})
 })
-
-// getEnvVar gets environment variable value and returns default if unset
-func getEnvVar(key, value string) string {
-	result, exist := os.LookupEnv(key)
-	if exist {
-		return result
-	}
-	return value
-}
