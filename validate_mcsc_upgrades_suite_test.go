@@ -1,6 +1,7 @@
 package validate_mcsc_upgrades_test
 
 import (
+	"os"
 	"testing"
 
 	_ "github.com/ryankwilliams/validate-mcsc-upgrades/tests"
@@ -13,6 +14,11 @@ func TestValidateMcscUpgrades(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	suiteConfig, reporterConfig := GinkgoConfiguration()
+
+	labelFilter := os.Getenv("GINKGO_LABEL_FILTER")
+	if labelFilter != "" {
+		suiteConfig.LabelFilter = labelFilter
+	}
 
 	if suiteConfig.LabelFilter == "" {
 		suiteConfig.LabelFilter = "ApplyHCPWorkloads || RemoveHCPWorkloads || MCUpgrade || SCUpgrade"
