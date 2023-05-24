@@ -14,4 +14,4 @@ then
 fi
 
 ocm login --token $OCM_TOKEN --url integration
-echo '{"service_cluster_id":"$SERVICE_CLUSTER_ID"}' | ocm post /api/osd_fleet_mgmt/v1/management_clusters
+echo '{"service_cluster_id":'\"$SERVICE_CLUSTER_ID\"'}' | ocm post /api/osd_fleet_mgmt/v1/management_clusters
