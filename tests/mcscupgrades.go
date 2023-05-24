@@ -24,7 +24,7 @@ var (
 	applyHCPWorkloads               = ginkgo.Label("ApplyHCPWorkloads")
 	clusterName                     = internal.GetEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 8))
 	clusterChannelGroup             = internal.GetEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
-	clusterVersion                  = internal.GetEnvVar("CLUSTER_VERSION", "4.12.18")
+	clusterVersion                  = internal.GetEnvVar("CLUSTER_VERSION", "4.12.6")
 	err                             error
 	hcpClusterKubeConfigFile        *string
 	hcpClusterID                    *string
@@ -171,7 +171,7 @@ var _ = ginkgo.AfterSuite(func() {
 		_ = osdProvider.Client.Close()
 	}()
 
-	if removeHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) && *hcpClusterID != "" {
+	if removeHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) && hcpClusterID != nil {
 		err := rosaProvider.DeleteCluster(ctx, &rosa.DeleteClusterOptions{
 			ClusterName: clusterName,
 			ClusterID:   *hcpClusterID,
