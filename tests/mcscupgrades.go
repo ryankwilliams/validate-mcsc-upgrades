@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/Masterminds/semver"
@@ -19,9 +20,10 @@ import (
 
 var (
 	applyHCPWorkloads               = ginkgo.Label("ApplyHCPWorkloads")
-	clusterName                     = getEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 4))
+	clusterName                     = getEnvVar("CLUSTER_NAME", envconf.RandomName("hcp", 8))
 	clusterChannelGroup             = getEnvVar("CLUSTER_CHANNEL_GROUP", "candidate")
 	clusterVersion                  = getEnvVar("CLUSTER_VERSION", "4.12.18")
+	err                             error
 	hcpClusterKubeConfigFile        *string
 	hcpClusterID                    *string
 	managementClusterKubeConfigFile *string
@@ -58,7 +60,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	gomega.Expect(ocmToken).Error().ShouldNot(gomega.BeEmpty(), "ocm token is undefined")
 
 	// Construct new rosa provider
-	rosaProvider, err := rosa.New(ctx, ocmToken, ocmEnv)
+	rosaProvider, err = rosa.New(ctx, ocmToken, ocmEnv)
 	gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to construct rosa provider")
 
 	// Construct new osd provider
@@ -149,6 +151,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			Version:      clusterVersion,
 			ChannelGroup: clusterChannelGroup,
 			HostedCP:     true,
+			Properties:   fmt.Sprintf("provision_shard_id:%s", provisionShardID),
 		})
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to create rosa hosted control plane cluster")
 		hcpClusterID = &clusterID
@@ -166,7 +169,7 @@ var _ = ginkgo.AfterSuite(func() {
 		_ = osdProvider.Client.Close()
 	}()
 
-	if removeHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) {
+	if removeHCPWorkloads.MatchesLabelFilter(ginkgo.GinkgoLabelFilter()) && *hcpClusterID != "" {
 		err := rosaProvider.DeleteCluster(ctx, &rosa.DeleteClusterOptions{
 			ClusterName: clusterName,
 			ClusterID:   *hcpClusterID,
@@ -180,11 +183,6 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 	kubernetesClient := func(kubeconfigFile string) (*kubernetesclient.Client, error) {
 		os.Setenv("KUBECONFIG", kubeconfigFile)
 		return kubernetesclient.New()
-	}
-
-	hcpClusterCheck := func() error {
-		_, err := kubernetesClient(*hcpClusterKubeConfigFile)
-		return err
 	}
 
 	ginkgo.It("service cluster is upgraded successfully", scUpgrade, func(ctx context.Context) {
@@ -201,7 +199,7 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 	})
 
 	ginkgo.It("hcp workloads are unaffected post service cluster upgrade", scUpgrade, func(ctx context.Context) {
-		err := hcpClusterCheck()
+		_, err := kubernetesClient(*hcpClusterKubeConfigFile)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "hosted control plane cluster failed post upgrade check")
 	})
 
@@ -219,7 +217,7 @@ var _ = ginkgo.Describe("HyperShift", ginkgo.Ordered, func() {
 	})
 
 	ginkgo.It("hcp workloads are unaffected post management cluster upgrade", mcUpgrade, func(ctx context.Context) {
-		err := hcpClusterCheck()
+		_, err := kubernetesClient(*hcpClusterKubeConfigFile)
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "hosted control plane cluster failed post upgrade check")
 	})
 })
