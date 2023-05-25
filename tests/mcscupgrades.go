@@ -85,7 +85,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to get get service cluster: %s", osdFleetMgmtServiceClusterID)
 
 		serviceClusterID = pointer.String(serviceCluster.Body().ID())
-		serviceClusterVersion, err := semver.NewVersion(serviceCluster.Body().Version().RawID())
+		serviceClusterVersion, err = semver.NewVersion(serviceCluster.Body().Version().RawID())
 		gomega.Expect(err).Error().ShouldNot(gomega.HaveOccurred(), "failed to parse service cluster installed version to semantic version")
 
 		availableVersions := serviceCluster.Body().Version().AvailableUpgrades()
