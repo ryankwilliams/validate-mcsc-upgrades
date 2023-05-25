@@ -3,6 +3,7 @@ package validate_mcsc_upgrades_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/ryankwilliams/validate-mcsc-upgrades/tests"
 
@@ -14,6 +15,7 @@ func TestValidateMcscUpgrades(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	suiteConfig, reporterConfig := GinkgoConfiguration()
+	suiteConfig.Timeout = 4 * time.Hour
 
 	labelFilter := os.Getenv("GINKGO_LABEL_FILTER")
 	if labelFilter != "" {
