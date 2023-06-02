@@ -1,3 +1,6 @@
+Since this was a proof of concept, refer to [openshift/osde2e](https://github.com/openshift/osde2e)
+repository to view the latest up to date test suite.
+
 # ROSA Hosted Control Plane MC & SC Upgrade Testing
 
 This repository contains the automated test suite to cover verifying
